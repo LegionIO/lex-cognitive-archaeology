@@ -51,6 +51,7 @@ module Legion
           def weighted_pick(weights)
             total = weights.values.sum
             return ARTIFACT_TYPES.sample if total.zero?
+
             roll = rand(total)
             cumulative = 0
             weights.each do |type, weight|

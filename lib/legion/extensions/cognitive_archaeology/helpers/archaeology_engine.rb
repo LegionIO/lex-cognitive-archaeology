@@ -14,6 +14,7 @@ module Legion
 
           def create_site(domain:)
             raise ArgumentError, "site capacity reached (max #{MAX_SITES})" if @sites.size >= MAX_SITES
+
             site = ExcavationSite.new(domain: domain)
             @sites[site.id] = site
             site
@@ -25,7 +26,8 @@ module Legion
           end
 
           def excavate(site_id:)
-            raise ArgumentError, "artifact capacity reached" if @artifacts.size >= MAX_ARTIFACTS
+            raise ArgumentError, 'artifact capacity reached' if @artifacts.size >= MAX_ARTIFACTS
+
             site = fetch_site!(site_id)
             artifact = site.excavate!
             @artifacts[artifact.id] = artifact
@@ -61,12 +63,16 @@ module Legion
           def site_report(site_id:) = fetch_site!(site_id).to_h
 
           def archaeology_report
-            { total_artifacts: @artifacts.size, total_sites: @sites.size,
-              type_breakdown: ARTIFACT_TYPES.to_h { |t| [t, @artifacts.values.count { |a| a.type == t }] },
-              domain_breakdown: DOMAIN_TYPES.to_h { |d| [d, @artifacts.values.count { |a| a.domain == d }] },
-              depth_breakdown: EXCAVATION_DEPTH_LEVELS.to_h { |l| [l, @artifacts.values.count { |a| a.depth_level == l }] },
-              avg_preservation: avg_metric(:preservation), avg_integrity: avg_metric(:integrity),
-              fragment_count: @artifacts.values.count(&:fragment?) }
+            {
+              total_artifacts:  @artifacts.size,
+              total_sites:      @sites.size,
+              type_breakdown:   count_by(:type, ARTIFACT_TYPES),
+              domain_breakdown: count_by(:domain, DOMAIN_TYPES),
+              depth_breakdown:  count_by(:depth_level, EXCAVATION_DEPTH_LEVELS),
+              avg_preservation: avg_metric(:preservation),
+              avg_integrity:    avg_metric(:integrity),
+              fragment_count:   @artifacts.values.count(&:fragment?)
+            }
           end
 
           private
@@ -74,8 +80,13 @@ module Legion
           def fetch_site!(id) = @sites.fetch(id) { raise ArgumentError, "site not found: #{id}" }
           def fetch_artifact!(id) = @artifacts.fetch(id) { raise ArgumentError, "artifact not found: #{id}" }
 
+          def count_by(attr, values)
+            values.to_h { |v| [v, @artifacts.values.count { |a| a.public_send(attr) == v }] }
+          end
+
           def avg_metric(method)
             return 0.0 if @artifacts.empty?
+
             (@artifacts.values.sum(&method) / @artifacts.size).round(10)
           end
         end

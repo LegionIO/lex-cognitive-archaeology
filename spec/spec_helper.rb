@@ -8,6 +8,7 @@ module Legion
       module Lex; end
     end
   end
+
   module Logging
     def self.method_missing(_, *) = nil
     def self.respond_to_missing?(_, _ = false) = true

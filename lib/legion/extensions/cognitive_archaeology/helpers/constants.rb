@@ -5,40 +5,66 @@ module Legion
     module CognitiveArchaeology
       module Helpers
         module Constants
-          MAX_ARTIFACTS           = 500
-          MAX_SITES               = 50
-          EXCAVATION_DEPTH_LEVELS = %i[surface shallow mid deep bedrock].freeze
-          DEFAULT_PRESERVATION    = 0.5
-          PRESERVATION_DECAY      = 0.02
+          MAX_ARTIFACTS            = 500
+          MAX_STRATA               = 20
+          DEFAULT_PRESERVATION     = 0.5
+          PRESERVATION_DECAY       = 0.02
+          SEDIMENT_DENSITY_DEFAULT = 0.5
 
-          ARTIFACT_TYPES = %i[pattern skill knowledge memory_fragment association procedure belief schema].freeze
-          DOMAIN_TYPES   = %i[cognitive emotional procedural semantic episodic social creative analytical].freeze
+          ARTIFACT_TYPES = %i[
+            pattern skill knowledge memory_fragment
+            association procedure belief schema
+          ].freeze
+
+          DOMAIN_TYPES = %i[
+            cognitive emotional procedural semantic
+            episodic social creative analytical
+          ].freeze
+
+          EXCAVATION_DEPTH_LEVELS = %i[surface shallow mid deep bedrock].freeze
+
+          EPOCH_NAMES = %i[
+            genesis formation expansion consolidation
+            crisis renewal maturation current
+          ].freeze
 
           DEPTH_PRESERVATION_MODIFIER = {
-            surface: 0.0, shallow: -0.1, mid: -0.2, deep: -0.35, bedrock: -0.5
+            surface: 0.0,
+            shallow: -0.1,
+            mid:     -0.2,
+            deep:    -0.35,
+            bedrock: -0.5
           }.freeze
 
           PRESERVATION_LABELS = [
-            [0.0..0.2, :dust], [0.2..0.4, :fragmented], [0.4..0.6, :partial],
-            [0.6..0.8, :intact], [0.8..1.0, :pristine]
+            [0.0..0.2, :dust],
+            [0.2..0.4, :fragmented],
+            [0.4..0.6, :partial],
+            [0.6..0.8, :intact],
+            [0.8..1.0, :pristine]
           ].freeze
 
           INTEGRITY_LABELS = [
-            [0.0..0.3, :corrupted], [0.3..0.6, :degraded],
-            [0.6..0.8, :coherent], [0.8..1.0, :complete]
+            [0.0..0.3, :corrupted],
+            [0.3..0.6, :degraded],
+            [0.6..0.8, :coherent],
+            [0.8..1.0, :complete]
+          ].freeze
+
+          DENSITY_LABELS = [
+            [0.0..0.2, :friable],
+            [0.2..0.4, :loose],
+            [0.4..0.6, :moderate],
+            [0.6..0.8, :dense],
+            [0.8..1.0, :compacted]
           ].freeze
 
           DEPTH_LABELS = {
-            surface: 'Surface Layer', shallow: 'Shallow Layer', mid: 'Mid Layer',
-            deep: 'Deep Layer', bedrock: 'Bedrock Layer'
-          }.freeze
-
-          DEPTH_RARITY_WEIGHTS = {
-            surface: { pattern: 30, skill: 20, knowledge: 20, memory_fragment: 15, association: 10, procedure: 3, belief: 1, schema: 1 },
-            shallow: { pattern: 20, skill: 20, knowledge: 20, memory_fragment: 15, association: 10, procedure: 8, belief: 5, schema: 2 },
-            mid:     { pattern: 15, skill: 15, knowledge: 15, memory_fragment: 15, association: 15, procedure: 10, belief: 8, schema: 7 },
-            deep:    { pattern: 5, skill: 10, knowledge: 15, memory_fragment: 20, association: 15, procedure: 10, belief: 15, schema: 10 },
-            bedrock: { pattern: 3, skill: 5, knowledge: 10, memory_fragment: 20, association: 10, procedure: 10, belief: 22, schema: 20 }
+            surface: 'Surface Layer (recent, well-preserved)',
+            shallow: 'Shallow Layer (familiar but fading)',
+            mid:     'Mid Layer (semi-dormant knowledge)',
+            deep:    'Deep Layer (long-dormant patterns)',
+            bedrock: 'Bedrock Layer (foundational cognitive strata)'
           }.freeze
 
           def self.label_for(table, value)
