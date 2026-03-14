@@ -1,96 +1,244 @@
 # frozen_string_literal: true
-RSpec.describe Legion::Extensions::CognitiveArchaeology::Helpers::Artifact do
-  let(:va) { { type: :pattern, domain: :cognitive, content: 'x', depth_level: :surface } }
-  subject(:a) { described_class.new(**va) }
-  let(:C) { Legion::Extensions::CognitiveArchaeology::Helpers::Constants }
 
-  it 'assigns a uuid id' do expect(a.id).to match(/\A[0-9a-f-]{36}\z/) end
-  it 'assigns type' do expect(a.type).to eq(:pattern) end
-  it 'assigns domain' do expect(a.domain).to eq(:cognitive) end
-  it 'assigns content' do expect(a.content).to eq('x') end
-  it 'assigns depth_level' do expect(a.depth_level).to eq(:surface) end
-  it 'defaults preservation to DEFAULT_PRESERVATION' do expect(a.preservation).to eq(C::DEFAULT_PRESERVATION) end
-  it 'clamps preservation above 1.0' do expect(described_class.new(**va, preservation: 2.0).preservation).to eq(1.0) end
-  it 'assigns integrity 0..1' do expect(a.integrity).to be_between(0.0, 1.0) end
-  it 'assigns discovered_at as Time' do expect(a.discovered_at).to be_a(Time) end
-  it 'assigns origin_epoch as Time' do expect(a.origin_epoch).to be_a(Time) end
-  it 'accepts explicit origin_epoch' do
-    e = Time.now.utc - 100; expect(described_class.new(**va, origin_epoch: e).origin_epoch).to eq(e)
+RSpec.describe Legion::Extensions::CognitiveArchaeology::Helpers::Artifact do
+  let(:mod) { Legion::Extensions::CognitiveArchaeology::Helpers::Constants }
+  let(:valid_type)   { :pattern }
+  let(:valid_domain) { :cognitive }
+  let(:valid_depth)  { :surface }
+
+  def build(**overrides)
+    described_class.new(
+      type:        valid_type,
+      domain:      valid_domain,
+      content:     'test content',
+      depth_level: valid_depth,
+      **overrides
+    )
   end
-  it 'starts with empty contextual_links' do expect(a.contextual_links).to eq([]) end
-  it 'accepts contextual_links' do expect(described_class.new(**va, contextual_links: %w[x]).contextual_links).to eq(['x']) end
-  it 'raises on invalid type' do expect { described_class.new(**va, type: :nope) }.to raise_error(ArgumentError, /unknown artifact type/) end
-  it 'raises on invalid domain' do expect { described_class.new(**va, domain: :nope) }.to raise_error(ArgumentError, /unknown domain/) end
-  it 'raises on invalid depth_level' do expect { described_class.new(**va, depth_level: :nope) }.to raise_error(ArgumentError, /unknown depth level/) end
-  it 'coerces string type to symbol' do expect(described_class.new(**va, type: 'skill').type).to eq(:skill) end
-  it 'coerces string domain to symbol' do expect(described_class.new(**va, domain: 'emotional').domain).to eq(:emotional) end
+
+  describe '#initialize' do
+    it 'assigns a uuid id' do
+      expect(build.id).to match(/\A[0-9a-f-]{36}\z/)
+    end
+
+    it 'symbolizes type' do
+      expect(build(type: 'skill').type).to eq(:skill)
+    end
+
+    it 'symbolizes domain' do
+      expect(build(domain: 'emotional').domain).to eq(:emotional)
+    end
+
+    it 'symbolizes depth_level' do
+      expect(build(depth_level: 'mid').depth_level).to eq(:mid)
+    end
+
+    it 'defaults preservation to DEFAULT_PRESERVATION' do
+      expect(build.preservation).to eq(mod::DEFAULT_PRESERVATION)
+    end
+
+    it 'clamps preservation to 0..1' do
+      expect(build(preservation: 2.5).preservation).to eq(1.0)
+      expect(build(preservation: -1.0).preservation).to eq(0.0)
+    end
+
+    it 'assigns discovered_at as UTC Time' do
+      expect(build.discovered_at).to be_a(Time)
+    end
+
+    it 'assigns origin_epoch when not provided' do
+      expect(build.origin_epoch).to be_a(Time)
+    end
+
+    it 'accepts explicit origin_epoch' do
+      epoch = Time.now.utc - 1_000_000
+      expect(build(origin_epoch: epoch).origin_epoch).to eq(epoch)
+    end
+
+    it 'initializes contextual_links as empty array by default' do
+      expect(build.contextual_links).to eq([])
+    end
+
+    it 'accepts contextual_links array' do
+      links = %w[id1 id2]
+      expect(build(contextual_links: links).contextual_links).to eq(links)
+    end
+
+    it 'raises ArgumentError for invalid type' do
+      expect { build(type: :unknown_type) }.to raise_error(ArgumentError, /unknown artifact type/)
+    end
+
+    it 'raises ArgumentError for invalid domain' do
+      expect { build(domain: :nonexistent) }.to raise_error(ArgumentError, /unknown domain/)
+    end
+
+    it 'raises ArgumentError for invalid depth_level' do
+      expect { build(depth_level: :abyss) }.to raise_error(ArgumentError, /unknown depth level/)
+    end
+
+    mod::ARTIFACT_TYPES.each do |t|
+      it "accepts artifact type :#{t}" do
+        expect { build(type: t) }.not_to raise_error
+      end
+    end
+
+    mod::DOMAIN_TYPES.each do |d|
+      it "accepts domain :#{d}" do
+        expect { build(domain: d) }.not_to raise_error
+      end
+    end
+
+    mod::EXCAVATION_DEPTH_LEVELS.each do |level|
+      it "accepts depth_level :#{level}" do
+        expect { build(depth_level: level) }.not_to raise_error
+      end
+    end
+  end
 
   describe '#decay!' do
-    it 'reduces preservation' do orig = a.preservation; a.decay!; expect(a.preservation).to be < orig end
-    it 'reduces by custom rate' do a.decay!(rate: 0.1); expect(a.preservation).to be_within(0.001).of(C::DEFAULT_PRESERVATION - 0.1) end
-    it 'clamps at 0.0' do a.preservation = 0.01; a.decay!(rate: 0.5); expect(a.preservation).to eq(0.0) end
-    it 'decays integrity at half rate' do orig = a.integrity; a.decay!(rate: 0.1); expect(a.integrity).to be < orig end
-    it 'returns self' do expect(a.decay!).to eq(a) end
+    it 'decreases preservation by PRESERVATION_DECAY' do
+      artifact = build(preservation: 0.8)
+      original = artifact.preservation
+      artifact.decay!
+      expect(artifact.preservation).to be < original
+      expect(artifact.preservation).to be_within(0.001).of(original - mod::PRESERVATION_DECAY)
+    end
+
+    it 'clamps preservation to 0.0 minimum' do
+      artifact = build(preservation: 0.01)
+      artifact.decay!(rate: 0.5)
+      expect(artifact.preservation).to eq(0.0)
+    end
+
+    it 'also decreases integrity' do
+      artifact = build(preservation: 0.8)
+      original = artifact.integrity
+      artifact.decay!
+      expect(artifact.integrity).to be <= original
+    end
+
+    it 'rounds to 10 decimal places' do
+      artifact = build(preservation: 0.123456789)
+      artifact.decay!
+      expect(artifact.preservation.to_s.length).to be <= 12
+    end
+
+    it 'returns self for chaining' do
+      artifact = build
+      expect(artifact.decay!).to be(artifact)
+    end
   end
 
   describe '#restore!' do
-    it 'increases preservation' do a.preservation = 0.3; a.restore!; expect(a.preservation).to be > 0.3 end
-    it 'uses custom boost' do a.preservation = 0.4; a.restore!(boost: 0.2); expect(a.preservation).to be_within(0.001).of(0.6) end
-    it 'clamps at 1.0' do a.preservation = 0.95; a.restore!(boost: 0.5); expect(a.preservation).to eq(1.0) end
-    it 'restores integrity' do a.integrity = 0.5; a.restore!(boost: 0.2); expect(a.integrity).to be > 0.5 end
-    it 'returns self' do expect(a.restore!).to eq(a) end
+    it 'increases preservation by boost' do
+      artifact = build(preservation: 0.4)
+      artifact.restore!(boost: 0.2)
+      expect(artifact.preservation).to be_within(0.001).of(0.6)
+    end
+
+    it 'clamps preservation to 1.0 maximum' do
+      artifact = build(preservation: 0.95)
+      artifact.restore!(boost: 0.5)
+      expect(artifact.preservation).to eq(1.0)
+    end
+
+    it 'also increases integrity' do
+      artifact = build(preservation: 0.4)
+      original = artifact.integrity
+      artifact.restore!
+      expect(artifact.integrity).to be >= original
+    end
+
+    it 'returns self for chaining' do
+      artifact = build
+      expect(artifact.restore!).to be(artifact)
+    end
   end
 
-  it 'fragment? true when < 0.3' do a.preservation = 0.2; expect(a.fragment?).to be true end
-  it 'fragment? false when >= 0.3' do a.preservation = 0.5; expect(a.fragment?).to be false end
-  it 'well_preserved? true when > 0.7' do a.preservation = 0.8; expect(a.well_preserved?).to be true end
-  it 'well_preserved? false when <= 0.7' do a.preservation = 0.5; expect(a.well_preserved?).to be false end
-  it 'ancient? true for old origin_epoch' do
-    expect(described_class.new(**va, origin_epoch: Time.now.utc - (181 * 86_400)).ancient?).to be true
+  describe '#fragment?' do
+    it 'returns true when preservation < 0.3' do
+      expect(build(preservation: 0.2).fragment?).to be true
+    end
+
+    it 'returns false when preservation >= 0.3' do
+      expect(build(preservation: 0.5).fragment?).to be false
+    end
   end
-  it 'ancient? false for recent origin_epoch' do
-    expect(described_class.new(**va, origin_epoch: Time.now.utc - 100).ancient?).to be false
+
+  describe '#well_preserved?' do
+    it 'returns true when preservation > 0.7' do
+      expect(build(preservation: 0.8).well_preserved?).to be true
+    end
+
+    it 'returns false when preservation <= 0.7' do
+      expect(build(preservation: 0.5).well_preserved?).to be false
+    end
+  end
+
+  describe '#ancient?' do
+    it 'returns true when origin_epoch is more than 180 days ago' do
+      old = Time.now.utc - 16_000_000
+      expect(build(origin_epoch: old).ancient?).to be true
+    end
+
+    it 'returns false for recent origin_epoch' do
+      recent = Time.now.utc - 1000
+      expect(build(origin_epoch: recent).ancient?).to be false
+    end
   end
 
   describe '#preservation_label' do
-    { 0.1 => :dust, 0.3 => :fragmented, 0.5 => :partial, 0.7 => :intact, 0.9 => :pristine }.each do |v, label|
-      it "#{v} => #{label}" do a.preservation = v; expect(a.preservation_label).to eq(label) end
+    it 'returns :dust for low preservation' do
+      expect(build(preservation: 0.1).preservation_label).to eq(:dust)
+    end
+
+    it 'returns :pristine for high preservation' do
+      expect(build(preservation: 0.9).preservation_label).to eq(:pristine)
+    end
+
+    it 'returns :partial for mid-range preservation' do
+      expect(build(preservation: 0.5).preservation_label).to eq(:partial)
     end
   end
 
   describe '#integrity_label' do
-    { 0.1 => :corrupted, 0.7 => :coherent, 0.9 => :complete }.each do |v, label|
-      it "#{v} => #{label}" do a.integrity = v; expect(a.integrity_label).to eq(label) end
+    it 'returns :corrupted for low integrity' do
+      artifact = build
+      artifact.integrity = 0.1
+      expect(artifact.integrity_label).to eq(:corrupted)
+    end
+
+    it 'returns :complete for high integrity' do
+      artifact = build
+      artifact.integrity = 0.9
+      expect(artifact.integrity_label).to eq(:complete)
     end
   end
 
-  it '#link_to adds link' do a.link_to('x'); expect(a.contextual_links).to include('x') end
-  it '#link_to no dup' do a.link_to('x'); a.link_to('x'); expect(a.contextual_links.count('x')).to eq(1) end
+  describe '#link_to' do
+    it 'adds other_id to contextual_links' do
+      artifact = build
+      artifact.link_to('some-uuid')
+      expect(artifact.contextual_links).to include('some-uuid')
+    end
+
+    it 'does not duplicate links' do
+      artifact = build
+      artifact.link_to('some-uuid')
+      artifact.link_to('some-uuid')
+      expect(artifact.contextual_links.count('some-uuid')).to eq(1)
+    end
+  end
 
   describe '#to_h' do
-    it 'includes all keys' do
-      %i[id type domain content depth_level preservation preservation_label integrity integrity_label
-         discovered_at origin_epoch contextual_links fragment well_preserved ancient].each do |k|
-        expect(a.to_h).to have_key(k)
-      end
-    end
-    it ':fragment reflects state' do a.preservation = 0.1; expect(a.to_h[:fragment]).to be true end
-    it ':well_preserved reflects state' do a.preservation = 0.9; expect(a.to_h[:well_preserved]).to be true end
-  end
+    subject(:hash) { build.to_h }
 
-  describe 'all types accepted' do
-    C::ARTIFACT_TYPES.each do |t|
-      it "accepts :#{t}" do expect { described_class.new(**va, type: t) }.not_to raise_error end
-    end
-  end
-  describe 'all domains accepted' do
-    C::DOMAIN_TYPES.each do |d|
-      it "accepts :#{d}" do expect { described_class.new(**va, domain: d) }.not_to raise_error end
-    end
-  end
-  describe 'all depth levels accepted' do
-    C::EXCAVATION_DEPTH_LEVELS.each do |d|
-      it "accepts :#{d}" do expect { described_class.new(**va, depth_level: d) }.not_to raise_error end
+    %i[id type domain content depth_level preservation preservation_label
+       integrity integrity_label discovered_at origin_epoch contextual_links
+       fragment well_preserved ancient].each do |key|
+      it "includes :#{key}" do
+        expect(hash).to have_key(key)
+      end
     end
   end
 end

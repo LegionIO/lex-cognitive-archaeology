@@ -5,45 +5,73 @@ module Legion
     module CognitiveArchaeology
       module Runners
         module CognitiveArchaeology
-          include Legion::Extensions::Helpers::Lex if defined?(Legion::Extensions::Helpers::Lex)
+          extend self
 
           def create_site(domain:, engine: nil, **)
-            eng = engine || @default_engine
+            Legion::Logging.debug("cognitive_archaeology: create_site domain=#{domain}")
+            eng  = resolve_engine(engine)
             site = eng.create_site(domain: domain)
-            { success: true, site: site.to_h }
+            { success: true, site: site.survey }
+          rescue ArgumentError => e
+            { success: false, error: e.message }
           end
 
           def dig(site_id:, engine: nil, **)
-            eng = engine || @default_engine
-            site = eng.dig(site_id: site_id)
-            return { success: false, error: 'site not found' } unless site
-            { success: true, site: site.to_h }
+            Legion::Logging.debug("cognitive_archaeology: dig site_id=#{site_id}")
+            eng    = resolve_engine(engine)
+            result = eng.dig(site_id: site_id)
+            { success: true }.merge(result)
+          rescue ArgumentError => e
+            { success: false, error: e.message }
           end
 
           def excavate(site_id:, engine: nil, **)
-            eng = engine || @default_engine
+            Legion::Logging.debug("cognitive_archaeology: excavate site_id=#{site_id}")
+            eng      = resolve_engine(engine)
             artifact = eng.excavate(site_id: site_id)
-            return { success: false, error: 'site not found' } unless artifact
             { success: true, artifact: artifact.to_h }
+          rescue ArgumentError => e
+            { success: false, error: e.message }
           end
 
-          def restore_artifact(artifact_id:, boost: nil, engine: nil, **)
-            eng = engine || @default_engine
-            artifact = eng.restore_artifact(artifact_id: artifact_id, boost: boost || Helpers::Constants::RESTORATION_BOOST)
-            return { success: false, error: 'artifact not found' } unless artifact
+          def restore_artifact(artifact_id:, boost: 0.15, engine: nil, **)
+            Legion::Logging.debug("cognitive_archaeology: restore_artifact id=#{artifact_id}")
+            eng      = resolve_engine(engine)
+            artifact = eng.restore_artifact(artifact_id: artifact_id, boost: boost)
             { success: true, artifact: artifact.to_h }
+          rescue ArgumentError => e
+            { success: false, error: e.message }
           end
 
-          def list_artifacts(engine: nil, **)
-            eng = engine || @default_engine
-            artifacts = eng.best_preserved
-            { success: true, count: artifacts.size, artifacts: artifacts.map(&:to_h) }
+          def list_artifacts(engine: nil, type: nil, domain: nil, depth_level: nil, **)
+            eng  = resolve_engine(engine)
+            list = if type
+                     eng.artifacts_by_type(type)
+                   elsif domain
+                     eng.artifacts_by_domain(domain)
+                   elsif depth_level
+                     eng.artifacts_by_depth(depth_level)
+                   else
+                     eng.all_artifacts
+                   end
+            { success: true, artifacts: list.map(&:to_h), count: list.size }
           end
 
           def archaeology_status(engine: nil, **)
-            eng = engine || @default_engine
-            report = eng.archaeology_report
-            { success: true, **report }
+            eng = resolve_engine(engine)
+            { success: true, report: eng.archaeology_report }
+          end
+
+          include Legion::Extensions::Helpers::Lex if defined?(Legion::Extensions::Helpers::Lex)
+
+          private
+
+          def resolve_engine(engine)
+            engine || default_engine
+          end
+
+          def default_engine
+            @default_engine ||= Helpers::ArchaeologyEngine.new
           end
         end
       end

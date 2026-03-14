@@ -6,8 +6,8 @@ module Legion
       class Client
         include Runners::CognitiveArchaeology
 
-        def initialize
-          @default_engine = Helpers::ArchaeologyEngine.new
+        def initialize(engine: nil)
+          @default_engine = engine || Helpers::ArchaeologyEngine.new
         end
       end
     end

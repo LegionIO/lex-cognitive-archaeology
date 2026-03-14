@@ -5,79 +5,158 @@ module Legion
     module CognitiveArchaeology
       module Helpers
         class ArchaeologyEngine
-          include Constants
-
           def initialize
+            @sites     = {}
             @artifacts = {}
-            @sites = {}
           end
 
           def create_site(domain:)
+            validate_site_capacity!
             site = ExcavationSite.new(domain: domain)
             @sites[site.id] = site
             site
           end
 
           def dig(site_id:)
-            site = @sites[site_id]
-            return nil unless site
-            site.dig_deeper!
-            site
+            site = fetch_site!(site_id)
+            dug  = site.dig_deeper!
+            { site: site.survey, dug: dug }
           end
 
           def excavate(site_id:)
-            site = @sites[site_id]
-            return nil unless site
+            site     = fetch_site!(site_id)
+            validate_artifact_capacity!
             artifact = site.excavate!
             @artifacts[artifact.id] = artifact
             artifact
           end
 
-          def restore_artifact(artifact_id:, boost: RESTORATION_BOOST)
-            artifact = @artifacts[artifact_id]
-            return nil unless artifact
-            artifact.restore!(boost)
+          def restore_artifact(artifact_id:, boost: 0.15)
+            artifact = fetch_artifact!(artifact_id)
+            artifact.restore!(boost: boost)
             artifact
           end
 
-          def decay_all!
-            @artifacts.each_value { |a| a.decay!(PRESERVATION_DECAY) }
+          def decay_all!(rate: Constants::PRESERVATION_DECAY)
+            @artifacts.each_value { |a| a.decay!(rate: rate) }
+            prune_dust!
+            @artifacts.size
           end
 
-          def artifacts_by_domain(domain:) = @artifacts.values.select { |a| a.domain == domain.to_sym }
-          def well_preserved = @artifacts.values.select(&:well_preserved?)
-          def fragments = @artifacts.values.select(&:fragment?)
+          def artifacts_by_type(type)
+            @artifacts.values.select { |a| a.type == type.to_sym }
+          end
 
-          def best_preserved(limit: 5)
+          def artifacts_by_domain(domain)
+            @artifacts.values.select { |a| a.domain == domain.to_sym }
+          end
+
+          def artifacts_by_depth(depth_level)
+            @artifacts.values.select { |a| a.depth_level == depth_level.to_sym }
+          end
+
+          def best_preserved(limit: 10)
             @artifacts.values.sort_by { |a| -a.preservation }.first(limit)
           end
 
-          def most_fragile(limit: 5)
-            @artifacts.values.sort_by(&:preservation).first(limit)
+          def most_fragile(limit: 10)
+            @artifacts.values.select(&:fragment?).sort_by(&:preservation).first(limit)
           end
 
-          def overall_preservation
-            return 0.0 if @artifacts.empty?
-            (@artifacts.values.sum(&:preservation) / @artifacts.size).round(10)
-          end
-
-          def overall_integrity
-            return 0.0 if @artifacts.empty?
-            (@artifacts.values.sum(&:integrity) / @artifacts.size).round(10)
-          end
-
-          def depth_distribution
-            dist = Hash.new(0)
-            @artifacts.each_value { |a| dist[a.depth_level] += 1 }
-            dist
+          def site_report(site_id:)
+            fetch_site!(site_id).to_h
           end
 
           def archaeology_report
-            { total_artifacts: @artifacts.size, total_sites: @sites.size, preservation: overall_preservation, preservation_label: Constants.label_for(PRESERVATION_LABELS, overall_preservation), integrity: overall_integrity, integrity_label: Constants.label_for(INTEGRITY_LABELS, overall_integrity), well_preserved: well_preserved.size, fragments: fragments.size, depth_distribution: depth_distribution, sites: @sites.values.map(&:to_h), best_preserved: best_preserved(limit: 3).map(&:to_h) }
+            {
+              total_artifacts:  @artifacts.size,
+              total_sites:      @sites.size,
+              type_breakdown:   type_breakdown,
+              domain_breakdown: domain_breakdown,
+              depth_breakdown:  depth_breakdown,
+              avg_preservation: avg_preservation,
+              avg_integrity:    avg_integrity,
+              fragment_count:   @artifacts.values.count(&:fragment?),
+              ancient_count:    @artifacts.values.count(&:ancient?),
+              sites:            @sites.values.map { |s| artifact_breakdown_for(s) }
+            }
           end
 
-          def to_h
-            { total_artifacts: @artifacts.size, total_sites: @sites.size, preservation: overall_preservation, integrity: overall_integrity }
+          def all_artifacts
+            @artifacts.values
+          end
+
+          def all_sites
+            @sites.values
+          end
+
+          private
+
+          def fetch_site!(site_id)
+            @sites.fetch(site_id) { raise ArgumentError, "site not found: #{site_id.inspect}" }
+          end
+
+          def fetch_artifact!(artifact_id)
+            @artifacts.fetch(artifact_id) { raise ArgumentError, "artifact not found: #{artifact_id.inspect}" }
+          end
+
+          def validate_site_capacity!
+            return if @sites.size < Constants::MAX_SITES
+
+            raise ArgumentError, "site capacity reached (max #{Constants::MAX_SITES})"
+          end
+
+          def validate_artifact_capacity!
+            return if @artifacts.size < Constants::MAX_ARTIFACTS
+
+            raise ArgumentError, "artifact capacity reached (max #{Constants::MAX_ARTIFACTS})"
+          end
+
+          def prune_dust!
+            @artifacts.delete_if { |_, a| a.preservation <= 0.0 }
+          end
+
+          def type_breakdown
+            Constants::ARTIFACT_TYPES.each_with_object({}) do |t, h|
+              h[t] = @artifacts.values.count { |a| a.type == t }
+            end
+          end
+
+          def domain_breakdown
+            Constants::DOMAIN_TYPES.each_with_object({}) do |d, h|
+              h[d] = @artifacts.values.count { |a| a.domain == d }
+            end
+          end
+
+          def depth_breakdown
+            Constants::EXCAVATION_DEPTH_LEVELS.each_with_object({}) do |level, h|
+              h[level] = @artifacts.values.count { |a| a.depth_level == level }
+            end
+          end
+
+          def avg_preservation
+            return 0.0 if @artifacts.empty?
+
+            (@artifacts.values.sum(&:preservation) / @artifacts.size).round(10)
+          end
+
+          def avg_integrity
+            return 0.0 if @artifacts.empty?
+
+            (@artifacts.values.sum(&:integrity) / @artifacts.size).round(10)
+          end
+
+          def artifact_breakdown_for(site)
+            site.survey.merge(
+              depth_progress: depth_progress(site),
+              artifact_types: site.artifacts_found.each_with_object(Hash.new(0)) { |a, h| h[a.type] += 1 }
+            )
+          end
+
+          def depth_progress(site)
+            idx   = Constants::EXCAVATION_DEPTH_LEVELS.index(site.current_depth)
+            total = Constants::EXCAVATION_DEPTH_LEVELS.size - 1
+            total.zero? ? 1.0 : (idx.to_f / total).round(4)
           end
         end
       end
