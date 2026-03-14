@@ -1,22 +1,37 @@
 # frozen_string_literal: true
 
-require 'legion/extensions/cognitive_archaeology'
+require 'bundler/setup'
 
 module Legion
   module Extensions
     module Helpers
       module Lex; end
     end
+
+    module Core; end
   end
 
   module Logging
-    def self.method_missing(_, *) = nil
-    def self.respond_to_missing?(_, _ = false) = true
+    def self.debug(*); end
+    def self.info(*); end
+    def self.warn(*); end
+    def self.error(*); end
   end
 end
 
+require 'legion/extensions/cognitive_archaeology'
+
 RSpec.configure do |config|
-  config.example_status_persistence_file_path = '.rspec_status'
+  config.expect_with :rspec do |expectations|
+    expectations.include_chain_clauses_in_custom_matcher_descriptions = true
+  end
+
+  config.mock_with :rspec do |mocks|
+    mocks.verify_partial_doubles = true
+  end
+
+  config.filter_run_when_matching :focus
   config.disable_monkey_patching!
-  config.expect_with(:rspec) { |c| c.syntax = :expect }
+  config.order = :random
+  Kernel.srand config.seed
 end

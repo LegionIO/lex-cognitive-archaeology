@@ -44,20 +44,9 @@ module Legion
           def list_artifacts(engine: nil, type: nil, domain: nil,
                              depth_level: nil, **)
             eng     = resolve_engine(engine)
-            results = eng.all_artifacts
-            if type
-              results = results.select do |a|
-                a.artifact_type == type.to_sym
-              end
-            end
-            if domain
-              results = results.select { |a| a.domain == domain.to_sym }
-            end
-            if depth_level
-              results = results.select do |a|
-                a.depth_level == depth_level.to_sym
-              end
-            end
+            results = filter_results(eng.all_artifacts,
+                                     type: type, domain: domain,
+                                     depth_level: depth_level)
             { success: true, artifacts: results.map(&:to_h),
               count: results.size }
           end
@@ -70,6 +59,14 @@ module Legion
           include Legion::Extensions::Helpers::Lex if defined?(Legion::Extensions::Helpers::Lex)
 
           private
+
+          def filter_results(artifacts, type:, domain:, depth_level:)
+            r = artifacts
+            r = r.select { |a| a.artifact_type == type.to_sym } if type
+            r = r.select { |a| a.domain == domain.to_sym } if domain
+            r = r.select { |a| a.depth_level == depth_level.to_sym } if depth_level
+            r
+          end
 
           def resolve_engine(engine)
             engine || default_engine

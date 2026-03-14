@@ -12,6 +12,8 @@ module Legion
 
           attr_accessor :preservation_quality, :integrity
 
+          alias type artifact_type
+
           def initialize(type:, domain:, content:, depth_level:,
                          preservation: nil, integrity: nil,
                          origin_epoch: nil, contextual_links: nil)
@@ -34,6 +36,10 @@ module Legion
 
           def preservation
             @preservation_quality
+          end
+
+          def preservation=(val)
+            @preservation_quality = val.to_f.clamp(0.0, 1.0).round(10)
           end
 
           def decay!(rate: Constants::PRESERVATION_DECAY)
@@ -75,10 +81,12 @@ module Legion
           def to_h
             {
               id:                   @id,
+              type:                 @artifact_type,
               artifact_type:        @artifact_type,
               domain:               @domain,
               content:              @content,
               depth_level:          @depth_level,
+              preservation:         @preservation_quality,
               preservation_quality: @preservation_quality,
               preservation_label:   preservation_label,
               integrity:            @integrity,
