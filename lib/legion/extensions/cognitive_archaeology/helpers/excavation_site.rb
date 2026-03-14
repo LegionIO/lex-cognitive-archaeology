@@ -1,64 +1,45 @@
 # frozen_string_literal: true
 
-require 'securerandom'
-
 module Legion
   module Extensions
     module CognitiveArchaeology
       module Helpers
         class ExcavationSite
-          attr_reader :id, :domain, :current_depth, :artifacts_found, :started_at
+          include Constants
+
+          attr_reader :id, :domain, :current_depth, :artifacts_found, :created_at
 
           def initialize(domain:)
-            unless Constants::DOMAIN_TYPES.include?(domain.to_sym)
-              raise ArgumentError,
-                    "unknown domain: #{domain.inspect}; " \
-                    "must be one of #{Constants::DOMAIN_TYPES.inspect}"
-            end
-
             @id              = SecureRandom.uuid
             @domain          = domain.to_sym
-            @current_depth   = Constants::EXCAVATION_DEPTH_LEVELS.first
+            @current_depth   = :surface
             @artifacts_found = []
-            @started_at      = Time.now.utc
+            @created_at      = Time.now.utc
           end
 
           def dig_deeper!
-            return false if complete?
+            idx = EXCAVATION_DEPTH_LEVELS.index(@current_depth) || 0
+            return false if idx >= EXCAVATION_DEPTH_LEVELS.size - 1
 
-            idx            = Constants::EXCAVATION_DEPTH_LEVELS.index(@current_depth)
-            @current_depth = Constants::EXCAVATION_DEPTH_LEVELS[idx + 1]
+            @current_depth = EXCAVATION_DEPTH_LEVELS[idx + 1]
             true
           end
 
           def excavate!
-            type     = weighted_random_type
-            artifact = Artifact.new(
-              type:         type,
-              domain:       @domain,
-              content:      "#{type}:#{@domain}@#{@current_depth}:#{SecureRandom.hex(4)}",
-              depth_level:  @current_depth,
-              preservation: base_preservation
-            )
+            weights = DEPTH_RARITY_WEIGHTS.fetch(@current_depth, {})
+            art_type = weighted_pick(weights)
+            artifact = Artifact.new(type: art_type, domain: @domain,
+                                    content: "#{art_type} from #{@current_depth}",
+                                    depth_level: @current_depth,
+                                    preservation: compute_base_preservation)
             @artifacts_found << artifact
-            trim!
             artifact
           end
 
           def survey
-            {
-              id:              @id,
-              domain:          @domain,
-              current_depth:   @current_depth,
-              depth_label:     Constants::DEPTH_LABELS[@current_depth],
-              artifacts_count: @artifacts_found.size,
-              complete:        complete?,
-              started_at:      @started_at
-            }
-          end
-
-          def complete?
-            @current_depth == Constants::EXCAVATION_DEPTH_LEVELS.last
+            { id: @id, domain: @domain, current_depth: @current_depth,
+              depth_label: DEPTH_LABELS.fetch(@current_depth, 'Unknown'),
+              artifacts_count: @artifacts_found.size, created_at: @created_at.iso8601 }
           end
 
           def to_h
@@ -67,26 +48,21 @@ module Legion
 
           private
 
-          def weighted_random_type
-            weights    = Constants::DEPTH_RARITY_WEIGHTS[@current_depth]
-            total      = weights.values.sum.to_f
-            roll       = rand * total
-            cumulative = 0.0
-            weights.each do |t, w|
-              cumulative += w
-              return t if roll < cumulative
+          def weighted_pick(weights)
+            total = weights.values.sum
+            return ARTIFACT_TYPES.sample if total.zero?
+            roll = rand(total)
+            cumulative = 0
+            weights.each do |type, weight|
+              cumulative += weight
+              return type if roll < cumulative
             end
             weights.keys.last
           end
 
-          def base_preservation
-            mod = Constants::DEPTH_PRESERVATION_MODIFIER.fetch(@current_depth, 0.0)
-            (Constants::DEFAULT_PRESERVATION + mod + rand(-0.05..0.05)).clamp(0.0, 1.0).round(10)
-          end
-
-          def trim!
-            excess = @artifacts_found.size - Constants::MAX_ARTIFACTS
-            @artifacts_found.shift(excess) if excess.positive?
+          def compute_base_preservation
+            mod = DEPTH_PRESERVATION_MODIFIER.fetch(@current_depth, 0.0)
+            (DEFAULT_PRESERVATION + mod).clamp(0.0, 1.0)
           end
         end
       end
