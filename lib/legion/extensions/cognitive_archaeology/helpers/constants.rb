@@ -6,7 +6,7 @@ module Legion
       module Helpers
         module Constants
           MAX_ARTIFACTS            = 500
-          MAX_STRATA               = 20
+          MAX_SITES                = 50
           DEFAULT_PRESERVATION     = 0.5
           PRESERVATION_DECAY       = 0.02
           SEDIMENT_DENSITY_DEFAULT = 0.5
@@ -34,6 +34,19 @@ module Legion
             mid:     -0.2,
             deep:    -0.35,
             bedrock: -0.5
+          }.freeze
+
+          DEPTH_RARITY_WEIGHTS = {
+            surface: { pattern: 3, skill: 2, knowledge: 3, memory_fragment: 5,
+                       association: 3, procedure: 2, belief: 1, schema: 1 },
+            shallow: { pattern: 3, skill: 3, knowledge: 3, memory_fragment: 4,
+                       association: 3, procedure: 3, belief: 1, schema: 1 },
+            mid:     { pattern: 2, skill: 3, knowledge: 3, memory_fragment: 3,
+                       association: 3, procedure: 3, belief: 2, schema: 2 },
+            deep:    { pattern: 1, skill: 2, knowledge: 2, memory_fragment: 2,
+                       association: 2, procedure: 3, belief: 3, schema: 3 },
+            bedrock: { pattern: 1, skill: 1, knowledge: 1, memory_fragment: 1,
+                       association: 1, procedure: 2, belief: 4, schema: 4 }
           }.freeze
 
           PRESERVATION_LABELS = [

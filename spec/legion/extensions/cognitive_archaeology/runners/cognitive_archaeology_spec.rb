@@ -2,62 +2,120 @@
 
 RSpec.describe Legion::Extensions::CognitiveArchaeology::Runners::CognitiveArchaeology do
   let(:engine) { Legion::Extensions::CognitiveArchaeology::Helpers::ArchaeologyEngine.new }
-  let(:runner) { Object.new.extend(described_class) }
+  let(:runner) { described_class }
 
-  def make_site
-    runner.create_site(domain: :cognitive, engine: engine)
-  end
-
-  describe '#create_site' do
-    it 'returns success' do
-      expect(make_site[:success]).to be true
+  describe '.create_site' do
+    it 'creates a site successfully' do
+      result = runner.create_site(domain: :cognitive, engine: engine)
+      expect(result[:success]).to be true
+      expect(result[:site]).to be_a Hash
+      expect(result[:site][:domain]).to eq :cognitive
     end
 
-    it 'returns site data' do
-      expect(make_site[:site][:domain]).to eq(:cognitive)
+    it 'returns failure for invalid domain' do
+      result = runner.create_site(domain: :bogus, engine: engine)
+      expect(result[:success]).to be false
+      expect(result[:error]).to include('unknown domain')
     end
   end
 
-  describe '#dig' do
-    it 'advances depth' do
-      s = make_site
-      result = runner.dig(site_id: s[:site][:id], engine: engine)
+  describe '.dig' do
+    let(:site) { engine.create_site(domain: :cognitive) }
+
+    it 'digs successfully' do
+      result = runner.dig(site_id: site.id, engine: engine)
+      expect(result[:success]).to be true
       expect(result[:dug]).to be true
+      expect(result[:site]).to be_a Hash
     end
 
-    it 'fails for unknown site' do
-      expect(runner.dig(site_id: 'bad', engine: engine)[:success]).to be false
-    end
-  end
-
-  describe '#excavate' do
-    it 'returns artifact data' do
-      s = make_site
-      r = runner.excavate(site_id: s[:site][:id], engine: engine)
-      expect(r[:artifact][:type]).to be_a(Symbol)
+    it 'returns failure for unknown site' do
+      result = runner.dig(site_id: 'bad', engine: engine)
+      expect(result[:success]).to be false
+      expect(result[:error]).to include('site not found')
     end
   end
 
-  describe '#restore_artifact' do
-    it 'restores' do
-      s = make_site
-      e = runner.excavate(site_id: s[:site][:id], engine: engine)
-      r = runner.restore_artifact(artifact_id: e[:artifact][:id], engine: engine)
-      expect(r[:success]).to be true
+  describe '.excavate' do
+    let(:site) { engine.create_site(domain: :cognitive) }
+
+    it 'excavates successfully' do
+      result = runner.excavate(site_id: site.id, engine: engine)
+      expect(result[:success]).to be true
+      expect(result[:artifact]).to be_a Hash
+      expect(result[:artifact][:domain]).to eq :cognitive
+    end
+
+    it 'returns failure for unknown site' do
+      result = runner.excavate(site_id: 'bad', engine: engine)
+      expect(result[:success]).to be false
     end
   end
 
-  describe '#list_artifacts' do
-    it 'returns all artifacts' do
-      s = make_site
-      runner.excavate(site_id: s[:site][:id], engine: engine)
-      expect(runner.list_artifacts(engine: engine)[:count]).to eq(1)
+  describe '.restore_artifact' do
+    let(:site) { engine.create_site(domain: :cognitive) }
+
+    it 'restores an artifact' do
+      artifact = engine.excavate(site_id: site.id)
+      artifact.decay!(rate: 0.3)
+      result = runner.restore_artifact(
+        artifact_id: artifact.id, boost: 0.2, engine: engine
+      )
+      expect(result[:success]).to be true
+      expect(result[:artifact][:preservation_quality]).to be > 0.0
+    end
+
+    it 'returns failure for unknown artifact' do
+      result = runner.restore_artifact(
+        artifact_id: 'bad', boost: 0.1, engine: engine
+      )
+      expect(result[:success]).to be false
+      expect(result[:error]).to include('artifact not found')
     end
   end
 
-  describe '#archaeology_status' do
-    it 'returns report' do
-      expect(runner.archaeology_status(engine: engine)[:report][:total_artifacts]).to eq(0)
+  describe '.list_artifacts' do
+    let(:site) { engine.create_site(domain: :cognitive) }
+
+    before { 3.times { engine.excavate(site_id: site.id) } }
+
+    it 'lists all artifacts' do
+      result = runner.list_artifacts(engine: engine)
+      expect(result[:success]).to be true
+      expect(result[:count]).to eq 3
+      expect(result[:artifacts]).to be_an Array
+    end
+
+    it 'filters by domain' do
+      result = runner.list_artifacts(engine: engine, domain: :cognitive)
+      expect(result[:count]).to eq 3
+    end
+
+    it 'filters by non-matching domain' do
+      result = runner.list_artifacts(engine: engine, domain: :emotional)
+      expect(result[:count]).to eq 0
+    end
+
+    it 'filters by depth_level' do
+      result = runner.list_artifacts(engine: engine, depth_level: :surface)
+      expect(result[:count]).to eq 3
+    end
+  end
+
+  describe '.archaeology_status' do
+    it 'returns status report' do
+      site = engine.create_site(domain: :cognitive)
+      engine.excavate(site_id: site.id)
+      result = runner.archaeology_status(engine: engine)
+      expect(result[:success]).to be true
+      expect(result[:report]).to be_a Hash
+      expect(result[:report][:total_artifacts]).to eq 1
+    end
+
+    it 'works on empty engine' do
+      result = runner.archaeology_status(engine: engine)
+      expect(result[:success]).to be true
+      expect(result[:report][:total_artifacts]).to eq 0
     end
   end
 end
