@@ -1,7 +1,32 @@
 AllCops:
-  NewCops: enable
   TargetRubyVersion: 3.4
+  NewCops: enable
   SuggestExtensions: false
+
+Layout/LineLength:
+  Max: 200
+
+Layout/HashAlignment:
+  EnforcedHashRocketStyle: table
+  EnforcedColonStyle: table
+
+Metrics/MethodLength:
+  Max: 25
+
+Metrics/ClassLength:
+  Max: 200
+
+Metrics/BlockLength:
+  Max: 50
+  Exclude:
+    - 'spec/**/*'
+
+Metrics/AbcSize:
+  Max: 25
+
+Metrics/ParameterLists:
+  Max: 8
+  MaxOptionalParameters: 8
 
 Style/Documentation:
   Enabled: false
@@ -11,28 +36,3 @@ Naming/PredicateMethod:
 
 Naming/PredicatePrefix:
   Enabled: false
-
-Metrics/ClassLength:
-  Max: 150
-
-Metrics/MethodLength:
-  Max: 25
-
-Metrics/AbcSize:
-  Max: 25
-
-Metrics/ParameterLists:
-  Max: 8
-  MaxOptionalParameters: 8
-
-Layout/HashAlignment:
-  EnforcedColonStyle: table
-  EnforcedHashRocketStyle: table
-
-Metrics/BlockLength:
-  Exclude:
-    - "spec/**/*"
-
-Style/OneClassPerFile:
-  Exclude:
-    - "spec/spec_helper.rb"

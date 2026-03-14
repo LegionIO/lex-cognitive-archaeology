@@ -3,26 +3,30 @@
 require_relative 'lib/legion/extensions/cognitive_archaeology/version'
 
 Gem::Specification.new do |spec|
-  spec.name          = 'lex-cognitive-archaeology'
-  spec.version       = Legion::Extensions::CognitiveArchaeology::VERSION
-  spec.authors       = ['Esity']
-  spec.email         = ['matthewdiverson@gmail.com']
+  spec.name    = 'lex-cognitive-archaeology'
+  spec.version = Legion::Extensions::CognitiveArchaeology::VERSION
+  spec.authors = ['Esity']
+  spec.email   = ['matthewdiverson@gmail.com']
 
-  spec.summary       = 'Cognitive archaeology for LegionIO'
-  spec.description   = 'Excavating buried cognitive artifacts — finding deeply buried patterns ' \
-                       'from the earliest layers of processing history, like real archaeology ' \
-                       'digs through layers of civilization'
-  spec.homepage      = 'https://github.com/LegionIO/lex-cognitive-archaeology'
-  spec.license       = 'MIT'
+  spec.summary     = 'LEX Cognitive Archaeology'
+  spec.description = 'Excavates buried cognitive artifacts from deep memory layers — ' \
+                     'uncovers forgotten patterns, dormant skills, and latent knowledge ' \
+                     'that was formed but never fully integrated'
+  spec.homepage = 'https://github.com/LegionIO/lex-cognitive-archaeology'
+  spec.license  = 'MIT'
+
   spec.required_ruby_version = '>= 3.4'
 
-  spec.metadata['homepage_uri']          = spec.homepage
-  spec.metadata['source_code_uri']       = spec.homepage
-  spec.metadata['documentation_uri']     = "#{spec.homepage}/blob/master/README.md"
-  spec.metadata['changelog_uri']         = "#{spec.homepage}/blob/master/CHANGELOG.md"
-  spec.metadata['bug_tracker_uri']       = "#{spec.homepage}/issues"
+  spec.metadata['homepage_uri']        = spec.homepage
+  spec.metadata['source_code_uri']     = 'https://github.com/LegionIO/lex-cognitive-archaeology'
+  spec.metadata['documentation_uri']   = 'https://github.com/LegionIO/lex-cognitive-archaeology'
+  spec.metadata['changelog_uri']       = 'https://github.com/LegionIO/lex-cognitive-archaeology'
+  spec.metadata['bug_tracker_uri']     = 'https://github.com/LegionIO/lex-cognitive-archaeology/issues'
   spec.metadata['rubygems_mfa_required'] = 'true'
 
-  spec.files         = `git ls-files -z`.split("\x0").reject { |f| f.start_with?('spec/') }
+  spec.files = Dir.chdir(File.expand_path(__dir__)) do
+    `git ls-files -z`.split("\x0").reject { |f| f.match(%r{^(test|spec|features)/}) }
+  end
+
   spec.require_paths = ['lib']
 end

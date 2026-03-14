@@ -1,215 +1,291 @@
 # frozen_string_literal: true
 
-require 'spec_helper'
-
 RSpec.describe Legion::Extensions::CognitiveArchaeology::Helpers::ArchaeologyEngine do
-  subject(:engine) { described_class.new }
+  let(:mod)    { Legion::Extensions::CognitiveArchaeology::Helpers::Constants }
+  let(:engine) { described_class.new }
 
-  def bury_one(content: 'test artifact', domain: 'craft', depth: 3, type: :tool, pq: 0.7)
-    engine.bury(content: content, domain: domain, stratum_depth: depth,
-                artifact_type: type, preservation_quality: pq)
+  def make_site(domain: :cognitive)
+    engine.create_site(domain: domain)
   end
 
-  describe '#stratum_at' do
-    it 'creates a stratum at the given depth' do
-      s = engine.stratum_at(5)
-      expect(s).not_to be_nil
-      expect(s.depth).to eq(5)
+  def dig_to(site, depth)
+    target_idx = mod::EXCAVATION_DEPTH_LEVELS.index(depth)
+    current_idx = mod::EXCAVATION_DEPTH_LEVELS.index(site.current_depth)
+    (target_idx - current_idx).times { engine.dig(site_id: site.id) }
+  end
+
+  describe '#create_site' do
+    it 'returns an ExcavationSite' do
+      expect(make_site).to be_a(Legion::Extensions::CognitiveArchaeology::Helpers::ExcavationSite)
     end
 
-    it 'returns existing stratum on second call' do
-      s1 = engine.stratum_at(2)
-      s2 = engine.stratum_at(2)
-      expect(s1).to eq(s2)
+    it 'stores the site internally' do
+      site = make_site
+      expect(engine.all_sites).to include(site)
     end
 
-    it 'assigns an epoch name' do
-      s = engine.stratum_at(0)
-      expect(s.epoch_name).to be_a(Symbol)
+    it 'raises ArgumentError for invalid domain' do
+      expect { engine.create_site(domain: :invalid_domain) }.to raise_error(ArgumentError)
     end
 
-    it 'returns nil when MAX_STRATA is reached' do
-      stub_const('Legion::Extensions::CognitiveArchaeology::Helpers::Constants::MAX_STRATA', 1)
-      engine.stratum_at(0)
-      expect(engine.stratum_at(1)).to be_nil
+    it 'raises ArgumentError when site capacity is reached' do
+      stub_const('Legion::Extensions::CognitiveArchaeology::Helpers::Constants::MAX_SITES', 2)
+      engine.create_site(domain: :cognitive)
+      engine.create_site(domain: :emotional)
+      expect { engine.create_site(domain: :semantic) }.to raise_error(ArgumentError, /capacity/)
+    end
+
+    mod::DOMAIN_TYPES.each do |d|
+      it "creates a site for domain :#{d}" do
+        expect { engine.create_site(domain: d) }.not_to raise_error
+      end
     end
   end
 
-  describe '#bury' do
-    it 'returns an artifact' do
-      a = bury_one
-      expect(a).not_to be_nil
-      expect(a.content).to eq('test artifact')
+  describe '#dig' do
+    it 'returns a hash with :site and :dug keys' do
+      site   = make_site
+      result = engine.dig(site_id: site.id)
+      expect(result).to have_key(:site)
+      expect(result).to have_key(:dug)
     end
 
-    it 'creates the stratum if needed' do
-      bury_one(depth: 7)
-      expect(engine.strata.map(&:depth)).to include(7)
+    it 'advances the site depth' do
+      site = make_site
+      engine.dig(site_id: site.id)
+      expect(site.current_depth).to eq(:shallow)
     end
 
-    it 'returns nil when MAX_ARTIFACTS is reached' do
-      stub_const('Legion::Extensions::CognitiveArchaeology::Helpers::Constants::MAX_ARTIFACTS', 1)
-      bury_one(content: 'a')
-      expect(bury_one(content: 'b')).to be_nil
+    it 'returns dug: true when successful' do
+      site = make_site
+      expect(engine.dig(site_id: site.id)[:dug]).to be true
+    end
+
+    it 'returns dug: false at bedrock' do
+      site = make_site
+      dig_to(site, :bedrock)
+      expect(engine.dig(site_id: site.id)[:dug]).to be false
+    end
+
+    it 'raises ArgumentError for unknown site_id' do
+      expect { engine.dig(site_id: 'no-such-id') }.to raise_error(ArgumentError, /site not found/)
     end
   end
 
   describe '#excavate' do
-    it 'returns artifacts in the stratum' do
-      a = bury_one(depth: 4)
-      results = engine.excavate(stratum_depth: 4)
-      expect(results.map { |r| r[:id] }).to include(a.id)
+    it 'returns an Artifact' do
+      site = make_site
+      expect(engine.excavate(site_id: site.id)).to \
+        be_a(Legion::Extensions::CognitiveArchaeology::Helpers::Artifact)
     end
 
-    it 'filters by domain' do
-      bury_one(depth: 4, domain: 'craft')
-      bury_one(depth: 4, domain: 'nature', content: 'leaf')
-      results = engine.excavate(stratum_depth: 4, domain: 'nature')
-      expect(results.all? { |r| r[:domain] == 'nature' }).to be true
+    it 'stores the artifact internally' do
+      site     = make_site
+      artifact = engine.excavate(site_id: site.id)
+      expect(engine.all_artifacts).to include(artifact)
     end
 
-    it 'filters by artifact_type' do
-      bury_one(depth: 4, type: :symbol, content: 'glyph')
-      bury_one(depth: 4, type: :ritual, content: 'rite')
-      results = engine.excavate(stratum_depth: 4, artifact_type: :symbol)
-      expect(results.all? { |r| r[:artifact_type] == :symbol }).to be true
+    it 'raises ArgumentError for unknown site_id' do
+      expect { engine.excavate(site_id: 'nope') }.to raise_error(ArgumentError, /site not found/)
     end
 
-    it 'filters by min_preservation' do
-      bury_one(depth: 4, pq: 0.3)
-      bury_one(depth: 4, pq: 0.8, content: 'well preserved')
-      results = engine.excavate(stratum_depth: 4, min_preservation: 0.5)
-      expect(results.all? { |r| r[:preservation_quality] >= 0.5 }).to be true
-    end
-
-    it 'returns empty for unknown stratum' do
-      expect(engine.excavate(stratum_depth: 99)).to eq([])
+    it 'raises ArgumentError when artifact capacity is reached' do
+      stub_const('Legion::Extensions::CognitiveArchaeology::Helpers::Constants::MAX_ARTIFACTS', 1)
+      site = make_site
+      engine.excavate(site_id: site.id)
+      site2 = engine.create_site(domain: :emotional)
+      expect { engine.excavate(site_id: site2.id) }.to raise_error(ArgumentError, /capacity/)
     end
   end
 
-  describe '#survey' do
-    it 'returns artifacts across all strata' do
-      bury_one(depth: 2)
-      bury_one(depth: 6, content: 'deeper')
-      expect(engine.survey.size).to eq(2)
+  describe '#restore_artifact' do
+    it 'increases artifact preservation' do
+      site     = make_site
+      artifact = engine.excavate(site_id: site.id)
+      artifact.preservation = 0.4
+      engine.restore_artifact(artifact_id: artifact.id, boost: 0.2)
+      expect(artifact.preservation).to be > 0.4
     end
 
-    it 'filters by domain across strata' do
-      bury_one(depth: 2, domain: 'craft')
-      bury_one(depth: 5, domain: 'nature', content: 'pollen')
-      results = engine.survey(domain: 'craft')
-      expect(results.size).to eq(1)
+    it 'returns the artifact' do
+      site     = make_site
+      artifact = engine.excavate(site_id: site.id)
+      result   = engine.restore_artifact(artifact_id: artifact.id)
+      expect(result).to be(artifact)
     end
 
-    it 'includes epoch_name in each result' do
-      bury_one
-      expect(engine.survey.first).to have_key(:epoch_name)
-    end
-  end
-
-  describe '#date_artifact' do
-    it 'returns dating info for known artifact' do
-      a = bury_one(depth: 10)
-      result = engine.date_artifact(a.id)
-      expect(result[:stratum_depth]).to eq(10)
-      expect(result[:artifact_id]).to eq(a.id)
-    end
-
-    it 'returns nil for unknown artifact' do
-      expect(engine.date_artifact('nope')).to be_nil
+    it 'raises ArgumentError for unknown artifact_id' do
+      expect { engine.restore_artifact(artifact_id: 'ghost') }.to raise_error(ArgumentError, /artifact not found/)
     end
   end
 
-  describe '#restore' do
-    it 'improves preservation quality' do
-      a = bury_one(pq: 0.5)
-      before_q = a.preservation_quality
-      result = engine.restore(a.id)
-      expect(result[:preservation_quality]).to be > before_q
+  describe '#decay_all!' do
+    it 'decreases preservation on all artifacts' do
+      site = make_site
+      3.times { engine.excavate(site_id: site.id) }
+      engine.all_artifacts.each { |a| a.preservation = 0.8 }
+      engine.decay_all!
+      engine.all_artifacts.each do |a|
+        expect(a.preservation).to be < 0.8
+      end
     end
 
-    it 'returns nil for unknown artifact' do
-      expect(engine.restore('missing')).to be_nil
-    end
-  end
-
-  describe '#catalog_artifact' do
-    it 'registers artifact in catalog' do
-      a = bury_one
-      engine.catalog_artifact(a.id)
-      expect(engine.catalog).to have_key(a.id)
+    it 'returns the count of remaining artifacts' do
+      site = make_site
+      3.times { engine.excavate(site_id: site.id) }
+      result = engine.decay_all!
+      expect(result).to be_a(Integer)
     end
 
-    it 'returns nil for unknown artifact' do
-      expect(engine.catalog_artifact('ghost')).to be_nil
-    end
-  end
-
-  describe '#cross_reference' do
-    it 'finds artifacts with same content in multiple strata' do
-      engine.bury(content: 'fire', domain: 'ritual', stratum_depth: 2, artifact_type: :ritual)
-      engine.bury(content: 'fire', domain: 'ritual', stratum_depth: 8, artifact_type: :ritual)
-      matches = engine.cross_reference(domain: 'ritual', min_strata: 2)
-      expect(matches.any? { |m| m[:content] == 'fire' }).to be true
-    end
-
-    it 'excludes content in fewer strata than min_strata' do
-      bury_one(domain: 'solo', depth: 3)
-      expect(engine.cross_reference(domain: 'solo', min_strata: 2)).to be_empty
+    it 'prunes artifacts with preservation 0.0' do
+      site     = make_site
+      artifact = engine.excavate(site_id: site.id)
+      artifact.preservation = 0.0
+      engine.decay_all!
+      expect(engine.all_artifacts).not_to include(artifact)
     end
   end
 
-  describe '#deepest_artifacts' do
-    it 'returns artifacts sorted by depth descending' do
-      bury_one(depth: 2)
-      bury_one(depth: 15, content: 'ancient')
-      expect(engine.deepest_artifacts(limit: 5).first[:stratum_depth]).to eq(15)
-    end
-
-    it 'respects limit' do
-      3.times { |i| bury_one(depth: i, content: "item #{i}") }
-      expect(engine.deepest_artifacts(limit: 2).size).to eq(2)
-    end
-  end
-
-  describe '#surface_finds' do
-    it 'returns artifacts from shallowest stratum' do
-      bury_one(depth: 0, content: 'surface shard', pq: 0.9)
-      bury_one(depth: 10, content: 'deep relic')
-      results = engine.surface_finds
-      expect(results.any? { |r| r[:content] == 'surface shard' }).to be true
-      expect(results.none? { |r| r[:content] == 'deep relic' }).to be true
-    end
-
-    it 'returns empty when no strata exist' do
-      expect(engine.surface_finds).to be_empty
+  describe '#artifacts_by_type' do
+    it 'returns artifacts matching type' do
+      site = make_site
+      allow_any_instance_of(
+        Legion::Extensions::CognitiveArchaeology::Helpers::ExcavationSite
+      ).to receive(:weighted_random_type).and_return(:pattern)
+      engine.excavate(site_id: site.id)
+      results = engine.artifacts_by_type(:pattern)
+      expect(results).not_to be_empty
+      expect(results.map(&:type).uniq).to eq([:pattern])
     end
   end
 
-  describe '#excavation_report' do
-    it 'includes expected keys' do
-      bury_one
-      report = engine.excavation_report
-      expect(report).to include(:strata_count, :total_artifacts, :catalog_size,
-                                :avg_preservation, :preservation_label,
-                                :deepest_stratum, :artifact_type_tally)
+  describe '#artifacts_by_domain' do
+    it 'returns only artifacts with matching domain' do
+      site = make_site(domain: :emotional)
+      engine.excavate(site_id: site.id)
+      results = engine.artifacts_by_domain(:emotional)
+      expect(results.map(&:domain).uniq).to eq([:emotional])
+    end
+  end
+
+  describe '#artifacts_by_depth' do
+    it 'returns only artifacts at matching depth' do
+      site = make_site
+      engine.excavate(site_id: site.id)
+      results = engine.artifacts_by_depth(:surface)
+      expect(results.map(&:depth_level).uniq).to eq([:surface])
+    end
+  end
+
+  describe '#best_preserved' do
+    it 'returns artifacts sorted by descending preservation' do
+      site = make_site
+      3.times { engine.excavate(site_id: site.id) }
+      results = engine.best_preserved
+      preservations = results.map(&:preservation)
+      expect(preservations).to eq(preservations.sort.reverse)
+    end
+
+    it 'respects the limit option' do
+      site = make_site
+      5.times { engine.excavate(site_id: site.id) }
+      expect(engine.best_preserved(limit: 2).size).to be <= 2
+    end
+  end
+
+  describe '#most_fragile' do
+    it 'returns only fragment artifacts' do
+      site     = make_site
+      artifact = engine.excavate(site_id: site.id)
+      artifact.preservation = 0.1
+      results = engine.most_fragile
+      expect(results).to include(artifact)
+    end
+
+    it 'excludes well-preserved artifacts' do
+      site     = make_site
+      artifact = engine.excavate(site_id: site.id)
+      artifact.preservation = 0.9
+      expect(engine.most_fragile).not_to include(artifact)
+    end
+  end
+
+  describe '#site_report' do
+    it 'returns the site hash' do
+      site = make_site
+      expect(engine.site_report(site_id: site.id)).to have_key(:id)
+    end
+
+    it 'raises ArgumentError for unknown site' do
+      expect { engine.site_report(site_id: 'bad') }.to raise_error(ArgumentError)
+    end
+  end
+
+  describe '#archaeology_report' do
+    subject(:report) { engine.archaeology_report }
+
+    it 'includes :total_artifacts' do
+      expect(report).to have_key(:total_artifacts)
+    end
+
+    it 'includes :total_sites' do
+      expect(report).to have_key(:total_sites)
+    end
+
+    it 'includes :type_breakdown' do
+      expect(report[:type_breakdown]).to be_a(Hash)
+    end
+
+    it 'includes :domain_breakdown' do
+      expect(report[:domain_breakdown]).to be_a(Hash)
+    end
+
+    it 'includes :depth_breakdown' do
+      expect(report[:depth_breakdown]).to be_a(Hash)
+    end
+
+    it 'includes :avg_preservation' do
+      expect(report[:avg_preservation]).to be_a(Numeric)
+    end
+
+    it 'includes :avg_integrity' do
+      expect(report[:avg_integrity]).to be_a(Numeric)
+    end
+
+    it 'includes :fragment_count' do
+      expect(report).to have_key(:fragment_count)
+    end
+
+    it 'includes :ancient_count' do
+      expect(report).to have_key(:ancient_count)
+    end
+
+    it 'includes :sites array' do
+      expect(report[:sites]).to be_an(Array)
+    end
+
+    it 'returns 0 avg_preservation when empty' do
+      expect(report[:avg_preservation]).to eq(0.0)
     end
 
     it 'counts artifacts correctly' do
-      bury_one
-      bury_one(content: 'second', depth: 7)
-      expect(engine.excavation_report[:total_artifacts]).to eq(2)
+      site = make_site
+      3.times { engine.excavate(site_id: site.id) }
+      expect(engine.archaeology_report[:total_artifacts]).to eq(3)
+    end
+  end
+
+  describe '#all_artifacts / #all_sites' do
+    it 'returns empty arrays initially' do
+      expect(engine.all_artifacts).to eq([])
+      expect(engine.all_sites).to eq([])
     end
 
-    it 'returns avg_preservation 0.0 when empty' do
-      expect(engine.excavation_report[:avg_preservation]).to eq(0.0)
-    end
-
-    it 'artifact_type_tally includes all types' do
-      bury_one(type: :tool)
-      tally = engine.excavation_report[:artifact_type_tally]
-      expect(tally).to have_key(:tool)
-      expect(tally).to have_key(:fragment)
+    it 'returns populated arrays after operations' do
+      site = make_site
+      engine.excavate(site_id: site.id)
+      expect(engine.all_sites.size).to eq(1)
+      expect(engine.all_artifacts.size).to eq(1)
     end
   end
 end
