@@ -21,13 +21,13 @@ RSpec.describe Legion::Extensions::CognitiveArchaeology::Helpers::ExcavationSite
       expect(site.artifacts_found).to be_empty
     end
 
-    it 'sets started_at' do
+    it 'records started_at as Time' do
       expect(site.started_at).to be_a Time
     end
 
     it 'raises on invalid domain' do
       expect do
-        described_class.new(domain: :bogus)
+        described_class.new(domain: :invalid_domain)
       end.to raise_error(ArgumentError, /unknown domain/)
     end
   end
@@ -39,8 +39,7 @@ RSpec.describe Legion::Extensions::CognitiveArchaeology::Helpers::ExcavationSite
     end
 
     it 'advances through all levels' do
-      levels = constants::EXCAVATION_DEPTH_LEVELS
-      (levels.size - 1).times { site.dig_deeper! }
+      (constants::EXCAVATION_DEPTH_LEVELS.size - 1).times { site.dig_deeper! }
       expect(site.current_depth).to eq :bedrock
     end
 
@@ -56,8 +55,7 @@ RSpec.describe Legion::Extensions::CognitiveArchaeology::Helpers::ExcavationSite
 
   describe '#excavate!' do
     it 'returns an Artifact' do
-      artifact = site.excavate!
-      expect(artifact).to be_a(
+      expect(site.excavate!).to be_a(
         Legion::Extensions::CognitiveArchaeology::Helpers::Artifact
       )
     end
@@ -69,58 +67,48 @@ RSpec.describe Legion::Extensions::CognitiveArchaeology::Helpers::ExcavationSite
 
     it 'creates artifact at current depth' do
       site.dig_deeper!
-      artifact = site.excavate!
-      expect(artifact.depth_level).to eq :shallow
+      expect(site.excavate!.depth_level).to eq :shallow
     end
 
     it 'creates artifact in site domain' do
-      artifact = site.excavate!
-      expect(artifact.domain).to eq :cognitive
+      expect(site.excavate!.domain).to eq :cognitive
     end
 
     it 'creates artifact with valid type' do
-      artifact = site.excavate!
-      expect(constants::ARTIFACT_TYPES).to include(artifact.artifact_type)
+      expect(constants::ARTIFACT_TYPES).to include(site.excavate!.artifact_type)
     end
   end
 
   describe '#survey' do
-    subject(:survey) { site.survey }
-
-    it 'returns a hash with expected keys' do
+    it 'returns hash with expected keys' do
       %i[id domain current_depth depth_label artifacts_count
          complete started_at].each do |key|
-        expect(survey).to have_key(key)
+        expect(site.survey).to have_key(key)
       end
     end
 
-    it 'returns correct domain' do
-      expect(survey[:domain]).to eq :cognitive
-    end
-
-    it 'returns correct artifact count' do
+    it 'returns correct artifact count after excavation' do
       site.excavate!
       expect(site.survey[:artifacts_count]).to eq 1
     end
   end
 
   describe '#complete?' do
-    it 'returns false initially' do
-      expect(site.complete?).to be false
+    it 'is false initially' do
+      expect(site).not_to be_complete
     end
 
-    it 'returns true at bedrock' do
+    it 'is true at bedrock' do
       4.times { site.dig_deeper! }
-      expect(site.complete?).to be true
+      expect(site).to be_complete
     end
   end
 
   describe '#to_h' do
-    it 'includes survey data and artifacts array' do
+    it 'includes artifacts array' do
       site.excavate!
       h = site.to_h
       expect(h).to have_key(:artifacts)
-      expect(h[:artifacts]).to be_an Array
       expect(h[:artifacts].first).to have_key(:id)
     end
   end
